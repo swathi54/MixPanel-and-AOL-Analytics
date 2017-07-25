@@ -1,0 +1,273 @@
+---
+title: "Programming Assignment2 - Problem1: Use MixPanelData JSON files to provide data analytics; Problem2: Use AOL Data to sessionize the Search Records"
+author: "Swathi Annamalai" email: "swats kats@gmail com"
+date: "3/7/2017"
+output: html_document
+---
+PROBLEM 1: Mixpanel (www mixpanel com) provides a service that tracks and records user-initiated events (e g , page clicks) and profile information submitted by users on Mixpanel-enabled web sites  JSON files with event and user information (people) can be exported from Mixpanel system for analysis 
+
+Importing libraries tidyjson, dplyr, jsonlite for processing data 
+```{r}
+library(tidyjson) 
+library(dplyr) # for %>% and other dplyr functions 
+library(jsonlite)
+```
+
+Reading 2 JSON files from data directory into 2 separate data frames
+Creating berkeley_event data frame to read in event records from berkeley event JSON file
+Creating berkeley_people data frame to read in people records from berkeley people JSON file
+```{r}
+berkeley_event <- readLines("berkeley_event-export json")
+berkeley_people <- readLines("berkeley_people-export json")
+```
+
+Tidying up the Data Frame - berkeley_event
+Parsing through the berkeley_event dataframe to tidy the data  Data is very untidy and not structured in the JSON file and gets loaded the same way within the dataframe  This data is very hard to interpret and makes it diffifcult for further processing  Hence, we parse out variables and values through the data using several functions from tidyjson library  We have name, distinct id, time, sampling_factor, labels and properties variables  Within properties, we have several more variables  Hence, we enter the object Properties and then parse values within 
+```{r}
+event_df <- berkeley_event %>% gather_array %>%
+    spread_values(
+	name = jstring("name"),        
+	distinct_id = jstring("distinct_id"),
+	 time = jstring("time"),
+	sampling_factor = jnumber("sampling_factor"),
+        labels = jlogical("labels")) %>%
+        enter_object("properties") %>%
+        spread_values(
+        properties_browser = jstring("$browser"),
+        properties_browser_version = jstring("$browser_version"),
+        properties_city = jstring("$city"),
+        properties_current_url = jstring("$current_url"),
+        properties_initial_referrer = jstring("$initial_referrer"),
+        properties_initial_referring_domain = jstring("$initial_referring_domain"),
+        properties_lib_version = jstring("$lib_version"),
+        properties_os= jstring("$os"),
+        properties_referrer= jstring("$referrer"),
+        properties_referring_domain= jstring("$referring_domain"),
+        properties_region= jstring("region"),
+        properties_screen_height= jstring("screen_height"),
+        properties_screen_width= jnumber("screen_width"),
+        properties_PageName= jstring("Page Name"),
+        properties_Artist= jstring("Artist"),
+        properties_Duration= jnumber("Duration"),
+        properties_Genre = jstring("Genre"),
+        properties_Plan = jstring("Plan"),
+        properties_Price= jnumber("Price"),
+        properties_Title= jstring("Title"),
+        properties_mp_country_code = jstring("mp_country_code"),
+       properties_mp_lib= jstring("mp_lib")
+)
+glimpse(event_df)
+```
+
+Tidying up the Data Frame - berkeley_people
+Parsing through the berkeley_people dataframe to tidy the data  Data is very untidy and not structured in the JSON file and gets loaded the same way within the dataframe  This data is very hard to interpret and makes it diffifcult for further processing  Hence, we parse out variables and values through the data using several functions from tidyjson library  We have name, distinct id, time, sampling_factor, labels and properties variables  Within properties, we have several more variables  Hence, we enter the object Properties and then parse values within 
+```{r}
+people_df <- berkeley_people %>% gather_array %>%
+  spread_values(
+  distinct_id = jstring("distinct_id"),
+ time = jstring("time"),
+ last_seen = jstring("last_seen"),
+ labels = jlogical("labels")) %>%
+ enter_object("properties") %>%
+    spread_values(
+       properties_browser = jstring("$browser"),
+       properties_browser_version = jstring("$browser_version"),
+       properties_city = jstring("$city"),
+       properties_browser_version = jstring("$browser_version"),
+       properties_country_code = jstring("$country_code"),
+       properties_email = jstring("$email"),
+       properties_initial_referrer = jstring("$initial_referrer"),
+       properties_name = jstring("$name"),
+       properties_os= jstring("$os"),
+       properties_region= jstring("$region"),
+       properties_timezone= jstring("$timezone"),
+       properties_FavoriteGenre= jstring("FavoriteGenre"),
+       properties_FirstLoginDate= jstring("First Login Date"),
+       properties_LifetimeSongPlayCount= jnumber("Lifetime Song Play Count"),
+       properties_LifetimeSongPurchaseCount= jnumber("Lifetime Song Purchase Count"),
+       properties_Plan= jstring("Plan")
+)
+
+glimpse(people_df)
+```
+
+Merge two dataframes into one - events_people. Join them using distinct_id as the key
+```{r}
+events_people <- merge(event_df, people_df, by = "distinct_id")
+glimpse(events_people)
+```
+
+Clean up event_people by transforming column names of events_people to snake_case. 
+R function converting string to snake_case. Test the function on UserCreated - user_created
+```{r}
+snake_case <- function( x ) {
+     s <- gsub("\\.", "_", x)     
+     s <- gsub("(.)([A-Z][a-z]+)", "\\1_\\2", s)  
+     s <- tolower(gsub("([a-z0-9])([A-Z])", "\\1_\\2", s)) 
+     s <- gsub("__", "_", s) 
+     s <- gsub("^[_, .]", "", s)  
+     s <- gsub(' ', '', s) 
+ }
+print(snake_case("UserCreated"))
+```
+
+Apply snake_case function to columns of events_people. In order to do this, we create a function fix_column_names which is made usable as a dplyr verb with a pipe to convert column names of events_people to snake case
+```{r}
+fix_col_names <- function(x) {snake_case(colnames(x))    }
+```
+
+Snake case column names of events_people
+properties_FavortieGenre --> properties_favorite_genre is one such example of this conversion
+```{r}
+colnames(events_people) <- events_people %>% fix_col_names
+colnames(events_people)
+```
+
+Replace NA's in Artist column of events_people with "None". Using select to check values from the column
+```{r}
+events_people <- events_people %>% mutate(properties_artist = ifelse(is.na(properties_artist),"None",properties_artist))
+select(events_people,properties_artist)
+```
+
+Replace NA's in PageName column with "No Page Name". Using select to check values from the column
+```{r}
+events_people <- events_people %>% mutate(properties_page_name = ifelse(is.na(properties_page_name),"No Page Name",properties_page_name))
+select(events_people, properties_page_name)
+```
+
+Using ggplot to construct a plot showing the count of page view events by page_name and artist
+```{r}
+ggplot(events_people, aes(events_people$properties_page_name, fill = properties_artist)) + geom_bar() + ggtitle("Count of Page View Events by Page_name and Artist") + labs(x = "Page Name", y = "Count")
+```
+
+PROBLEM 2: Data Scientists analyze visitor sessions, a sequence of user-initiated events on a web site that take place within a given time interval, to improve customer engagement and outcomes (usually the characteristics of sessions that lead to signups, purchases, or return visits).
+In 2006, a 3.5 million row data set of AOL user's detailed search logs was released.Use dplyr, ggplot, tidy data principles, and the AOL search data, develop Data Analytics.
+
+Read the file into 'aoldata' data frame. The file is a txt with 3.5mi records
+Dataset contains 5 attributes as follows:
+AnonID - an anonymous user ID number.
+Query - the query issued by the user
+QueryTime - the time at which the query was submitted 
+ItemRank - if the user clicked on a search result, the rank of the item on which they clicked 
+ClickURL - if the user clicked on a search result, the URL is listed 
+```{r}
+aoldata <- read.delim("user-ct-test-collection-01.txt")
+glimpse(aoldata)
+```
+
+Convert column names from aoldata data frame using fix_column_names function developed in Problem1
+```{r}
+colnames(aoldata) <- aoldata %>% fix_col_names
+colnames(aoldata)
+```
+
+The goal here is to roll up individual search events to: 
+1. aol_sessions: One record for each of the contiguous searches. Each record has a unique id which is a combination of AnonId and Session Sequence Number
+2. aol_visitors: One record summarizing user search activity
+"Sessionize" the search records: aggregate the search records by user session, defined as all events for a given user where there is no more than a thirty minute gap between events. In other
+words, a session, which should be assigned a unique (per user) session sequence number, is series of visits (search events in this data set) by a given user, over any length of time, but with no more than a thirty minute interval from their last visit. 
+```{r}
+aol_sessions <- aoldata %>%
+      arrange(anon_id, query_time) %>%
+      group_by(anon_id) %>%
+      mutate(Minutes_After_Last = difftime(query_time, lag(query_time), units = "mins"),
+             New_Session_Flag = is.na(lag(anon_id)) | Minutes_After_Last > 30,
+             session_sequence_number = cumsum(New_Session_Flag),
+             session_id = paste(anon_id, session_sequence_number, sep ="_")
+      ) %>%
+      group_by(anon_id, session_sequence_number, session_id) %>%
+      summarize( 
+                 number_searches = n(),
+                 session_started_at = first(query_time),
+                 session_ended_at = last(query_time),            
+                 session_length = difftime(last(query_time), first(query_time), 
+                                                      units = "mins"),                         
+	               number_clicks = sum(!is.na(click_url)),
+                 number_terms = n_distinct(query),
+                 mean_item_rank = mean(item_rank),
+                 mean_number_search_terms = mean(number_searches)
+                 
+      )
+```
+
+The session sequence number starts at 1 for each visitor and is incremented whenever the time interval is greater than 30mins. This is done as follows: 
+1. Compute the time lag, in mins, from prior record
+2. Set session flag as True or False when: True = there is no prior record for visitor OR False = lag to prior record is > 30mins.
+3. Perform Cumulative sum of session flags to get session sequence number
+
+
+```{r}
+glimpse(aol_sessions)
+```
+
+EDA for AOL Sessions
+Statistics by session:
+1. The distribution of session durations (histogram count)
+```{r}
+ ggplot(aol_sessions, aes(session_length)) + geom_histogram(binwidth = 10) + ggtitle("AOL Sessions - Distribution of Session Durations") + scale_y_log10()
+```
+
+2. The distribution of the number of clicks per session (histogram count)
+```{r}
+ggplot(aol_sessions, aes(number_clicks)) + geom_histogram(binwidth = 10) + ggtitle("AOL Sessions - Distribution of Number of Clicks in Session") + scale_y_log10() + xlim(1,300)
+```
+
+In order to plot EDA for User Sessions, we first need to calculate values at Visitor level
+We use group_by the visitor unique id and then summarize at visitor level to create visitor metrics
+```{r}
+aol_visitors <- aol_sessions %>%
+  group_by(anon_id) %>%
+  summarize(number_sessions = n(),
+            total_duration_minutes = as.numeric(sum(session_length)),
+            avg_duration_minutes = as.numeric(mean(session_length)),
+            median_duration_minutes = as.numeric(median(session_length)),
+            avg_number_searches = mean(number_sessions),
+            median_number_searches = median(number_sessions),
+            avg_number_clicks = mean(number_clicks),
+            median_number_clicks = median(number_clicks)
+            )
+glimpse(aol_visitors)
+```
+
+Statistics by user:
+3. The distribution of the number of sessions by user (histogram count)
+```{r}
+ggplot(aol_visitors, aes(number_sessions)) + 
+     geom_histogram(binwidth = 10) + 
+     ggtitle("AOL Visitors - Distribution of Number of Sesisons") +
+     scale_y_log10() + xlim(1,400)
+```
+
+4. The distribution of mean session duration by user (histogram count)
+```{r}
+ggplot(aol_visitors, aes(avg_duration_minutes)) + 
+     geom_histogram(binwidth = 5) + 
+     ggtitle("AOL Visitors - Distribution of Mean Session Duration") +
+     scale_y_log10() + 
+     xlim(0, 100)
+```
+
+5. The distribution of average number of click throughs (histogram count)
+```{r}
+ggplot(aol_visitors, aes(avg_number_clicks)) + 
+  geom_histogram(binwidth = 1) + 
+  ggtitle("AOL Visitors - Distribution of Average Number of Click Throughs") +
+  scale_y_log10() + 
+  xlim(0, 20)
+```
+
+6. The distribution of the mean item_rank (histogram count)
+```{r}
+ggplot(aol_sessions, aes(mean_item_rank)) + geom_histogram(binwidth = 10) + ggtitle("AOL Sessions - Distribution of Mean of Item Rank") + scale_y_log10()
+```
+
+7. The distribution of Session Length of Users 
+```{r}
+ggplot(aol_visitors, aes(total_duration_minutes)) + geom_histogram(binwidth = 10) + ggtitle("AOL Sessions - Distribution of Session Length of Users") + scale_y_log10() + xlim(0, 4000)
+```
+
+8. Distribution of Median Number of Searches performed by users 
+```{r}
+ggplot(aol_visitors, aes(avg_number_searches)) + geom_histogram(binwidth = 10) + ggtitle("AOL Sessions - Distribution of Session Durations") + scale_y_log10()
+```
+
